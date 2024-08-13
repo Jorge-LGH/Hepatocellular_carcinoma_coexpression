@@ -1,7 +1,6 @@
 # Load libraries
 library(SummarizedExperiment)  # Version: 1.34.0
 library(TCGAbiolinks)          # Version: 2.32.0
-library(VennDiagram)           # Version: 1.7.3
 library(dplyr)                 # Version: 1.1.4
 
 #-----Sample IDs for expression data-----
@@ -41,7 +40,8 @@ duplicates <- samples_exp |>
 table(duplicates$subtype)             # There are 94 duplicates (08-08-2024)
 
 #Cirrhotomimetic hepatocellular carcinoma  |  Clear cell hepatocellular carcinoma  |  Fibrolamellar carcinoma  
-#2                                           4                                        2
+#2                                            4                                       2
+
 #NA  |  No specific subtype  |  Scirrhous hepatocellular carcinoma  |  Steatohepatitic 
 #8      74                      2                                      2
 
@@ -50,14 +50,28 @@ table(duplicates$subtype)             # There are 94 duplicates (08-08-2024)
 cli_data <- GDCquery_clinic("TCGA-LIHC","clinical")
 
 #Keep specific clinical data
-cli_data <- select(cli_data, c("bcr_patient_barcode", "gender", "race", "vital_status", "ajcc_pathologic_t",
-                               "ajcc_pathologic_stage", "primary_diagnosis", "prior_malignancy",
-                               "ajcc_staging_system_edition", "ajcc_pathologic_m", "ajcc_pathologic_n",
-                               "treatments_pharmaceutical_treatment_or_therapy",
-                               "treatments_radiation_treatment_or_therapy"))
+cli_data <- cli_data[, c("bcr_patient_barcode", "gender", "race", "vital_status", "ajcc_pathologic_t",
+                         "ajcc_pathologic_stage", "primary_diagnosis", "prior_malignancy",
+                         "ajcc_pathologic_m", "ajcc_pathologic_n",
+                         "treatments_pharmaceutical_treatment_or_therapy",
+                         "treatments_radiation_treatment_or_therapy")]
 
 # Combine clinical data to expression sample data
 samples_exp <- cbind(samples_exp,t(sapply(samples_exp$patient_id,function(x) 
   cli_data[cli_data$bcr_patient_barcode==x,-1])))
 
+# Basic data description
+table(samples_exp$subtype)
+table(as.character(samples_exp$gender))
+table(as.character(samples_exp$race))
+table(as.character(samples_exp$vital_status))
+table(as.character(samples_exp$primary_diagnosis))
+table(as.character(samples_exp$ajcc_pathologic_t))
+table(as.character(samples_exp$ajcc_pathologic_stage))
+table(as.character(samples_exp$prior_malignancy))
+table(as.character(samples_exp$treatments_pharmaceutical_treatment_or_therapy))
+table(as.character(samples_exp$treatments_radiation_treatment_or_therapy))
 
+# Make object into a tsv table for later pre-processing
+samples_exp <- apply(samples_exp,2,as.character)
+write.table(samples_exp,"samples_exp.tsv",sep='\t', row.names = F, quote = F)
