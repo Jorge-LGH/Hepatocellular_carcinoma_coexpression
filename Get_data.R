@@ -3,47 +3,93 @@ library(SummarizedExperiment)  # Version: 1.34.0
 library(TCGAbiolinks)          # Version: 2.32.0
 library(dplyr)                 # Version: 1.1.4
 
-#-----Sample IDs for expression data-----
+#-----Expression data-----
 exp_data <- GDCquery(project = "TCGA-LIHC",                        # Liver hepatocellular carcinoma
                      data.category = "Transcriptome Profiling",    # Self explanatory 
                      data.type = "Gene Expression Quantification", # Self explanatory
                      workflow.type="STAR - Counts")                # Read counts
 
-exp_data <- getResults(exp_data)         # Get results from query (must be a GDCquery object)
-exp_ids <- substr(exp_data$cases,1,19)   # Extract all sample ids. Remove institute code
-length(exp_ids)                          # There are 424 samples  (06-08-2024)
+exp_data <- getResults(exp_data)                                   # Get results from query (must be a GDCquery object)
+exp_ids <- substr(exp_data$cases,1,19)                             # Extract all sample ids. Remove institute code
+length(exp_ids)                                                    # There are 424 samples  (06-08-2024)
 
-#-----Features of interest-----
-# Make dataframe
-samples_exp <- data.frame(cbind(exp_ids,                 # Column with the whole identifier
-                                substr(exp_ids, 1, 12))) # Column with patient identifier
-colnames(samples_exp) <- c("experiment_id","patient_id") # Change column names
+#-----Methylation data-----
+meth_data <-  GDCquery(project = "TCGA-LIHC",                      # Liver hepatocellular carcinoma
+                     data.category = "DNA Methylation",            # Self explanatory
+                     platform="Illumina Human Methylation 450")    # Self explanatory
 
-# Get HCC variants and metadata
-sample_subtypes <- TCGAquery_subtype(tumor = "LIHC")                              # Table with hepatocellular carcinoma variants
-sum(samples_exp$patient_id %in% sample_subtypes$patient)                          # 240 samples (06-08-2024)
-samples_exp <- samples_exp[samples_exp$patient_id %in% sample_subtypes$patient, ] # Keep only annotated patient samples
+meth_data <- getResults(meth_data)                                 # Get results from query (must be a GDCquery object)
+meth_ids <- substr(meth_data$cases,1,19)                           # Extract all sample ids. Remove institute code
+length(meth_ids)                                                   # There are 1,290 samples  (26-08-2024)
 
-# Assign HCC subtypes 
-subtypes <- c()                                             # Empty vector to extract HCC subtypes                                            
-for(ids in samples_exp$patient_id){
-  subtypes <- c(subtypes, sample_subtypes[which(            # Extract the subtypes
-    sample_subtypes$patient == ids),]["HCC subtypes"][[1]])
+#-----Micro RNA data-----
+mirna_data <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma
+                       data.category = "Transcriptome Profiling",     # Self explanatory
+                       data.type = "miRNA Expression Quantification") # Self explanatory
+
+mirna_data <- getResults(mirna_data)                                  # Get results from query (must be a GDCquery object)
+mirna_ids <- substr(mirna_data$cases,1,19)                            # Extract all sample ids. Remove institute code
+length(mirna_ids)                                                     # There are 425 samples  (26-08-2024)
+
+#-----Extract shared data sample ids-----
+samples_ids <- intersect(exp_ids, meth_ids) %>%                       # Intersect ids between the expression and methylation data ids
+  intersect(., mirna_ids)                                             # Intersect the ids with the miRNA data ids
+length(samples_ids)                                                   # There are 410 samples (26-08-2024)
+
+#-----Format into dataframe-----
+tissues <- c()                                                        # Make empty data frame
+for(sample in samples_ids) {                                          # Iterate over every single sample id
+  tissues <- append(tissues, meth_data[which(                         # Extract and append each sample type
+    sample %in% 
+      substr(meth_data$cases,1,19)),]$sample_type)
 }
-samples_exp$subtype <- subtypes                             # Adding the subtype column
 
-# Check for multiple samples for single patients
-duplicates <- samples_exp |>
-  add_count(patient_id, subtype) |>
+samples_data <- data.frame(cbind(samples_ids,                         # Make dataframe with first column being the whole experiment id
+                                 substr(samples_ids,1,12),            # Second column has up to the patient id
+                                 tissues),                            # Third column is sample types   
+                           row.names = samples_ids)                   # The row names are the same as the whole experiment id
+
+colnames(samples_data) <- c("Experiment_id", 
+                            "Patient_id","Sample_type")               # Change column names
+
+samples_data <- samples_data[which(                                   # Remove samples tagged as "Solid Tissue Normal"
+  !samples_data$Sample_type == "Solid Tissue Normal"),]               # None were removed (26-08-2024)
+
+#-----HCC variants-----
+sample_subtypes <- TCGAquery_subtype(tumor = "LIHC")                                 # Table with hepatocellular carcinoma variants
+sum(samples_data$Patient_id %in% sample_subtypes$patient)                            # 228 samples (26-08-2024)
+samples_data <- samples_data[samples_data$Patient_id %in% sample_subtypes$patient, ] # Keep only annotated patient samples
+table(sample_subtypes$`HCC subtypes`[sample_subtypes$patient %in%                    # View HCC subtypes
+                                       samples_data$Patient_id])
+
+# 26-08-2024
+# Cirrhotomimetic hepatocellular carcinoma      Clear cell hepatocellular carcinoma           Fibrolamellar carcinoma
+# 3                                             10                                            4
+
+# Lymphocyte rich hepatocellular carcinoma      Myxoid hepatocellular carcinoma               NA
+# 3                                             1                                             13
+
+# No specific subtype                           Sarcomatoid hepatocellular carcinoma          Scirrhous hepatocellular carcinoma 
+# 135                                           2                                             8
+
+# Steatohepatitic 
+# 10 
+
+samples_data$Subtype <- sapply(samples_data$Patient_id,function(x)   # Assign each sample subtype as metadata column
+  sample_subtypes$`HCC subtypes`[sample_subtypes$patient==x])
+
+# Check for multiple samples in patients
+duplicates <- samples_data |>
+  add_count(Patient_id, Subtype) |>
   filter(n > 1) |>
   distinct()
-table(duplicates$subtype)             # There are 94 duplicates (08-08-2024)
+table(duplicates$Subtype)             # There are 80 duplicates (26-08-2024)
 
-#Cirrhotomimetic hepatocellular carcinoma  |  Clear cell hepatocellular carcinoma  |  Fibrolamellar carcinoma  
-#2                                            4                                       2
+# Cirrhotomimetic hepatocellular carcinoma  Clear cell hepatocellular carcinoma  Fibrolamellar carcinoma  
+# 2                                         4                                    2
 
-#NA  |  No specific subtype  |  Scirrhous hepatocellular carcinoma  |  Steatohepatitic 
-#8      74                      2                                      2
+# NA                                        No specific subtype 
+# 8                                         62
 
 #-----Clinical data-----
 # Extract clinical data
@@ -57,21 +103,21 @@ cli_data <- cli_data[, c("bcr_patient_barcode", "gender", "race", "vital_status"
                          "treatments_radiation_treatment_or_therapy")]
 
 # Combine clinical data to expression sample data
-samples_exp <- cbind(samples_exp,t(sapply(samples_exp$patient_id,function(x) 
-  cli_data[cli_data$bcr_patient_barcode==x,-1])))
+samples_data <- cbind(samples_data,t(sapply(samples_data$Patient_id,function(x) 
+  cli_data[cli_data$bcr_patient_barcode==x,2:ncol(cli_data)])))
 
 # Basic data description
-table(samples_exp$subtype)
-table(as.character(samples_exp$gender))
-table(as.character(samples_exp$race))
-table(as.character(samples_exp$vital_status))
-table(as.character(samples_exp$primary_diagnosis))
-table(as.character(samples_exp$ajcc_pathologic_t))
-table(as.character(samples_exp$ajcc_pathologic_stage))
-table(as.character(samples_exp$prior_malignancy))
-table(as.character(samples_exp$treatments_pharmaceutical_treatment_or_therapy))
-table(as.character(samples_exp$treatments_radiation_treatment_or_therapy))
+table(samples_data$Subtype)
+table(as.character(samples_data$gender))
+table(as.character(samples_data$race))
+table(as.character(samples_data$vital_status))
+table(as.character(samples_data$primary_diagnosis))
+table(as.character(samples_data$ajcc_pathologic_t))
+table(as.character(samples_data$ajcc_pathologic_stage))
+table(as.character(samples_data$prior_malignancy))
+table(as.character(samples_data$treatments_pharmaceutical_treatment_or_therapy))
+table(as.character(samples_data$treatments_radiation_treatment_or_therapy))
 
-# Make object into a tsv table for later pre-processing
-samples_exp <- apply(samples_exp,2,as.character)
-write.table(samples_exp,"samples_exp.tsv",sep='\t', row.names = F, quote = F)
+#-----Make object into a tsv table for later pre-processing-----
+samples_data <- apply(samples_data,2,as.character)
+write.table(samples_data,"samples_data.tsv",sep='\t', row.names = F, quote = F)
