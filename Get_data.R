@@ -1,4 +1,4 @@
-# Load libraries
+#-----Load libraries-----
 library(SummarizedExperiment)  # Version: 1.34.0
 library(TCGAbiolinks)          # Version: 2.32.0
 library(dplyr)                 # Version: 1.1.4
@@ -52,8 +52,8 @@ samples_data <- data.frame(cbind(samples_ids,                         # Make dat
 colnames(samples_data) <- c("Experiment_id", 
                             "Patient_id","Sample_type")               # Change column names
 
-samples_data <- samples_data[which(                                   # Remove samples tagged as "Solid Tissue Normal"
-  !samples_data$Sample_type == "Solid Tissue Normal"),]               # None were removed (26-08-2024)
+samples_data <- samples_data[which(samples_data$Sample_type == "Solid Tissue Normal"),] # None were removed (26-08-2024)                                  # Remove samples tagged as "Solid Tissue Normal"
+ 
 
 #-----HCC variants-----
 sample_subtypes <- TCGAquery_subtype(tumor = "LIHC")                                 # Table with hepatocellular carcinoma variants
