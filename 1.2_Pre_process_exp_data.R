@@ -93,7 +93,7 @@ noiseqData <- NOISeq::readData(data = exprots_hgnc,                             
 
 mycountsbio <- dat(noiseqData, type = "countsbio", factor = "Subtype")                    # Generate expression data with feature annotation object
 
-# Check expression bias per subtype
+# Check expression bias values
 explo.plot(mycountsbio, plottype = "boxplot", samples = 1:8)      # Exploratory boxplot demonstrating the expression values for each subtype
 
 # Check for low count genes
@@ -115,13 +115,13 @@ explo.plot(mycd,samples=sample(1:ncol(exprots_hgnc),10))  # Data normalization i
 # GC bias
 GCcontent <- dat(noiseqData,  k = 0, type = "GCbias", norm = F, factor = "Subtype")
 GCcontent                                                                            # View object for better understanding
-par(mfrow=c(2,4))                                                                    # Show the plots for the 10 subtypes
-sapply(1:8,function(x) explo.plot(GCcontent, samples = x))                           # Show the GC content for the 10 subtypes
+par(mfrow=c(2,4))                                                                    # Show the plots for the 8 subtypes
+sapply(1:8,function(x) explo.plot(GCcontent, samples = x))                           # Show the GC content for the 8 subtypes
 
 # Length bias
 lenbias <- dat(noiseqData, k = 0, type = "lengthbias", factor = "Subtype")
-par(mfrow=c(2,4))                                                                    # Show the plots for the 10 subtypes
-sapply(1:8,function(x) explo.plot(lenbias, samples = x))                             # Show the length bias for the 10 subtypes
+par(mfrow=c(2,4))                                                                    # Show the plots for the 8 subtypes
+sapply(1:8,function(x) explo.plot(lenbias, samples = x))                             # Show the length bias for the 8 subtypes
 
 par(mfrow=c(1,1))
 # Check for batch effect

@@ -2,6 +2,7 @@
 library(TCGAbiolinks)          # Version: 2.32.0
 library(biomaRt)               # Version: 2.60.1
 library(NOISeq)                # Version: 2.48.0
+library(edgeR)                 # Version: 4.2.1
 
 #-----Load data-----
 samples_data <- read.csv("samples_data.tsv", sep = "\t", header = T)   # .tsv file created in the Get_data.R script
@@ -37,7 +38,8 @@ design_exp <- designExp[order(match(design_exp$Experiment_id,          # Sort ob
 design_exp$barcode <- colnames(mir_data)                                        # Add the reduced experiment id as a barcode
 design_exp[which(is.na(design_exp$Subtype)),]$Subtype <- "No specific subtype"  # Make subtypes==NA into "No specific subtype"
 design_exp <- design_exp[which(!design_exp$Subtype == "No specific subtype"),]  # Remove the "No specific subtype" samples, 45 remain (19-09-2024)
-
+mir_data <- mir_data[,which(colnames(mir_data) %in% design_exp$barcode)]        # Remove samples from expression matrix
+mir_data <- mir_data[which(rowSums(mir_data) > 0),]                             # Remove features with 0 reads across all samples
 
 #-----GC content, length and biotype-----
 bmart_db <- useEnsembl("ensembl", dataset="hsapiens_gene_ensembl")     # BioMart selection of ENSEMBL database. Also selected homo sapiens dataset
@@ -53,9 +55,9 @@ myannot$length <- myannot$end_position-myannot$start_position          # Get the
 
 # Dealing with mirna duplicates is kind of confusing
 # We will remove those that have the same mirbase_id and GC content just to make sure they are the same 
-dim(myannot)                                                           # 1,590 genes (13-10-2024)
-myannot <- myannot[!duplicated(myannot[,2:3]),]                        # 1,482 genes remain (13-10-2024)
-myannot <- myannot[!duplicated(myannot$mirbase_id),]                   # Remove samples that have the same mirbase id (17 were removed 19-09-2024)
+dim(myannot)                                                           # 1,433 genes (19-09-2024)
+myannot <- myannot[!duplicated(myannot[,2:3]),]                        # 1,344 genes remain (19-09-2024)
+myannot <- myannot[!duplicated(myannot$mirbase_id),]                   # Remove samples that have the same mirbase id (15 were removed 19-09-2024)
 
 #-----Check for biases-----
 # There should be little or no length bias due to the nature of micro RNAs, however, it is necessary to check either way
@@ -67,5 +69,48 @@ noiseqData <- readData(data = mir_data,                                # Create 
                        gc = myannot[,c(3,2)],                          # GC content for each feature
                        length = myannot[,c(3,6)])                      # Length of every feature
 
-mycountsbio <- dat(noiseqData, type = "countsbio", factor = "Subtype")
-explo.plot(mycountsbio, plottype = "boxplot", samples = 1:9)
+mycountsbio <- dat(noiseqData, type = "countsbio", factor = "Subtype") # Generate expression data with feature annotation object
+
+# Check expression values
+explo.plot(mycountsbio, plottype = "boxplot", samples = 1:8)           # Exploratory boxplot demonstrating the expression values for each subtype
+
+# Check for low count genes
+explo.plot(mycountsbio, plottype = "barplot", samples = 1:8)           # Exploratory barplot showing CPM per subtype
+
+# Mean of log CPM
+ggplot(data = mir_data,                                                # Exploratory histogram portrays mean log CPM to view low CPM values overall
+       aes(x=rowMeans(cpm(mir_data, log = T)))) + 
+  geom_histogram(color="black", fill="white", binwidth=.5) + 
+  labs(x="Mean of log CPM") +
+  geom_vline(xintercept = 0)
+
+# Check GC bias
+GCcontent <- dat(noiseqData, k = 0, type = "GCbias", factor = "Subtype")
+par(mfrow=c(2,4))                                                      # Show the plots for the 8 subtypes
+sapply(1:8,function(x) explo.plot(GCcontent, samples = x))             # Show the GC content for the 8 subtypes
+
+# Check length bias
+mylenBias <- dat(noiseqData, k = 0, type = "lengthbias", factor = "Subtype",norm=T) # Explore data based on length bias
+sapply(1:8,function(x) explo.plot(mylenBias, samples = x))                          # Visualize plots
+par(mfrow=c(1,1))                                                                   # Set one plot at the tome again
+
+# Check for batch effect
+my_pca <- dat(noiseqData, type = "PCA", norm = F, logtransf = F)                    # Make PCA
+explo.plot(my_pca, samples = c(1,2), plottype = "scores", factor = "Subtype")       # Plot to check if samples group by subtype
+
+# Transcript composition bias
+mycd <- dat(noiseqData, type = "cd", norm = FALSE)
+table(mycd@dat$DiagnosticTest[,"Diagnostic Test"])                     # 44 failed (19-09-2024)
+explo.plot(mycd,samples=sample(1:ncol(mir_data),10))                   # Data normalization is needed
+
+#-----Reduce biases-----
+
+
+
+
+
+
+
+
+
+
