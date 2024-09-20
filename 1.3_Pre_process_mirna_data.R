@@ -3,6 +3,8 @@ library(TCGAbiolinks)          # Version: 2.32.0
 library(biomaRt)               # Version: 2.60.1
 library(NOISeq)                # Version: 2.48.0
 library(edgeR)                 # Version: 4.2.1
+library(EDASeq)                # Version: 2.38.0
+library(tidyverse)             # Version: 2.0.0
 
 #-----Load data-----
 samples_data <- read.csv("samples_data.tsv", sep = "\t", header = T)   # .tsv file created in the Get_data.R script
@@ -58,6 +60,8 @@ myannot$length <- myannot$end_position-myannot$start_position          # Get the
 dim(myannot)                                                           # 1,433 genes (19-09-2024)
 myannot <- myannot[!duplicated(myannot[,2:3]),]                        # 1,344 genes remain (19-09-2024)
 myannot <- myannot[!duplicated(myannot$mirbase_id),]                   # Remove samples that have the same mirbase id (15 were removed 19-09-2024)
+myannot <- myannot[!duplicated(myannot[,2:3]) &                        # Remove genes that have same ensembl_id and gc content but different mirbase_id
+                     !duplicated(myannot$ensembl_gene_id),]
 
 #-----Check for biases-----
 # There should be little or no length bias due to the nature of micro RNAs, however, it is necessary to check either way
@@ -88,10 +92,14 @@ ggplot(data = mir_data,                                                # Explora
 GCcontent <- dat(noiseqData, k = 0, type = "GCbias", factor = "Subtype")
 par(mfrow=c(2,4))                                                      # Show the plots for the 8 subtypes
 sapply(1:8,function(x) explo.plot(GCcontent, samples = x))             # Show the GC content for the 8 subtypes
+# Results show R2 values among every subtype and their mean expression values, however 
+# the p-values are only significant (p<0.05) in the sarcomatoid subtype (19-09-2024)
 
 # Check length bias
 mylenBias <- dat(noiseqData, k = 0, type = "lengthbias", factor = "Subtype",norm=T) # Explore data based on length bias
 sapply(1:8,function(x) explo.plot(mylenBias, samples = x))                          # Visualize plots
+# Results show very high R2 values, but only three subtypes' p-values are significant (p<0.05) (19-09-2024)
+
 par(mfrow=c(1,1))                                                                   # Set one plot at the tome again
 
 # Check for batch effect
@@ -104,9 +112,18 @@ table(mycd@dat$DiagnosticTest[,"Diagnostic Test"])                     # 44 fail
 explo.plot(mycd,samples=sample(1:ncol(mir_data),10))                   # Data normalization is needed
 
 #-----Reduce biases-----
+# Filter genes with low read counts
+count_matrix_filtered <- filtered.data(mir_data, factor = "Subtype", norm = F,       # 251 features out of 1,353 are to be kept (20-09-2024)   
+                                       depth = NULL, method = 1, cpm = 0)
+myannot <- myannot[myannot$mirbase_id %in% rownames(count_matrix_filtered),]         # Keep only the filtered genes (246 genes 20-09-2024)
+count_matrix_filtered <- count_matrix_filtered[rownames(count_matrix_filtered) %in%  # Remove the genes that are not in my annotation
+                                                 myannot$mirbase_id,]
 
-
-
+# Create an object containing the new RNA expression set
+new_exp_data <- newSeqExpressionSet(                                   # Create expression set function
+  counts = as.matrix(count_matrix_filtered),                           # Gene count matrix
+  featureData = data.frame(myannot, row.names=myannot$mirbase_id),     # Features of data, such as GC content, length, etc.
+  phenoData = data.frame(design_exp, row.names=design_exp$barcode))    # Sample information assigned
 
 
 
